@@ -1,3 +1,4 @@
+#include <stddef.h>
 #ifndef AUTH_CLIENT_H
 #define AUTH_CLIENT_H
 

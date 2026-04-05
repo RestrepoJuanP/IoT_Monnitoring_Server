@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include "logger.h"
 #include <stdarg.h>
 #include <string.h>
