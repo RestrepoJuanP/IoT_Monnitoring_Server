@@ -212,15 +212,15 @@ static void handle_status(int client_fd, HttpConfig *config)
     sm_get_status(config->sm, &sensors, &operators, &uptime);
 
     /* Obtener listas JSON de sensores, mediciones y alertas */
-    char sensors_json[4096];
-    char measurements_json[4096];
-    char alerts_json[4096];
+    char sensors_json[32768];
+    char measurements_json[32768];
+    char alerts_json[32768];
     sm_query_sensors(config->sm, sensors_json, sizeof(sensors_json));
     sm_query_measurements(config->sm, measurements_json, sizeof(measurements_json));
     sm_query_alerts(config->sm, alerts_json, sizeof(alerts_json));
 
     /* Construir JSON de respuesta */
-    char body[16384];
+    char body[131072];
     int body_len = snprintf(body, sizeof(body),
         "{"
         "\"sensores_activos\":%d,"
