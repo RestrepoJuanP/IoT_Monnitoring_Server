@@ -1,4 +1,4 @@
-# CLAUDE.md — Proyecto IoT Monitoring System
+# Documentacion.md — Proyecto IoT Monitoring System
 
 > Contiene toda la especificación, arquitectura modular, invariantes y convenciones del proyecto.
 
