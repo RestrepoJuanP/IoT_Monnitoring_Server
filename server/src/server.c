@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <errno.h>
+#include <sys/time.h>
 
 /*
  * Lee una línea completa terminada en \r\n del socket.
