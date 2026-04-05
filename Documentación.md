@@ -1,6 +1,5 @@
 # CLAUDE.md — Proyecto IoT Monitoring System
 
-> Este archivo es leído automáticamente por Claude Code al iniciar sesión en el repositorio.
 > Contiene toda la especificación, arquitectura modular, invariantes y convenciones del proyecto.
 
 ---
