@@ -1,0 +1,266 @@
+# Guia de Despliegue — IoT Monitoring System
+
+Instrucciones paso a paso para desplegar el sistema completo en AWS.
+
+---
+
+## Requisitos previos
+
+- Cuenta de AWS con acceso a EC2, Route 53 y VPC.
+- Par de claves SSH (key pair) creado en la consola de AWS.
+- Dominio registrado o zona hospedada en Route 53 (opcional pero recomendado).
+- Cliente SSH instalado localmente.
+
+---
+
+## Paso 1: Crear instancia EC2
+
+1. Ir a **EC2 > Instances > Launch Instances** en la consola de AWS.
+2. Configurar:
+   - **Nombre:** `iot-monitoring-server`
+   - **AMI:** Ubuntu Server 22.04 LTS (HVM, SSD Volume Type)
+   - **Tipo de instancia:** `t2.micro` (free tier) o `t3.micro`
+   - **Key pair:** seleccionar el par de claves existente o crear uno nuevo
+   - **Almacenamiento:** 20 GB gp3 (suficiente para Docker + imagenes)
+3. Hacer clic en **Launch Instance**.
+
+---
+
+## Paso 2: Configurar Security Group
+
+Editar el Security Group de la instancia para permitir el trafico necesario:
+
+| Tipo            | Protocolo | Puerto | Origen         | Descripcion                |
+|-----------------|-----------|--------|----------------|----------------------------|
+| SSH             | TCP       | 22     | Tu IP publica  | Acceso SSH                 |
+| Custom TCP Rule | TCP       | 8080   | 0.0.0.0/0      | Interfaz web HTTP          |
+| Custom TCP Rule | TCP       | 9000   | 0.0.0.0/0      | Protocolo IOTP (sensores)  |
+| Custom TCP Rule | TCP       | 9001   | 0.0.0.0/0      | Auth service (solo si necesario externamente) |
+
+> **Nota:** El puerto 9001 solo necesita estar abierto si los clientes acceden
+> al auth service directamente. En produccion, deberia estar restringido a la
+> red interna de Docker.
+
+---
+
+## Paso 3: Asignar IP elastica
+
+1. Ir a **EC2 > Elastic IPs > Allocate Elastic IP Address**.
+2. Hacer clic en **Allocate**.
+3. Seleccionar la IP creada, hacer clic en **Actions > Associate Elastic IP Address**.
+4. Seleccionar la instancia `iot-monitoring-server` y confirmar.
+5. Anotar la IP elastica: ` 34.206.240.99` (se usara para DNS).
+
+---
+
+## Paso 4: Conectar por SSH e instalar Docker
+
+```bash
+# Conectar a la instancia (reemplazar con tu key pair e IP)
+ssh -i "tu-key-pair.pem" ubuntu@<IP_ELASTICA>
+
+# Clonar el repositorio (o subir los archivos)
+git clone git@github.com:RestrepoJuanP/IoT_Monnitoring_Server.git iot-monitoring
+cd iot-monitoring
+
+# Ejecutar el script de configuracion
+chmod +x infra/setup_ec2.sh
+sudo ./infra/setup_ec2.sh
+
+# IMPORTANTE: cerrar y reconectar SSH para que los permisos surtan efecto
+exit
+ssh -i "tu-key-pair.pem" ubuntu@<IP_ELASTICA>
+```
+
+---
+
+## Paso 5: Levantar el sistema con Docker Compose
+
+```bash
+cd iot-monitoring
+
+# Construir imagenes y levantar en background
+docker compose up -d --build
+
+# Verificar que los contenedores esten corriendo
+docker compose ps
+```
+
+Salida esperada:
+```
+NAME         IMAGE                COMMAND                  STATUS         PORTS
+iot-auth     iot-monitoring-auth  "python auth_server.…"   Up 10 seconds  0.0.0.0:9001->9001/tcp
+iot-server   iot-monitoring-server "./server 9000 /app/…"  Up 10 seconds  0.0.0.0:8080->8080/tcp, 0.0.0.0:9000->9000/tcp
+```
+
+---
+
+## Paso 6: Verificar el despliegue
+
+### Desde el navegador
+
+Abrir `http://<IP_ELASTICA>:8080` — deberia mostrar la pagina de login.
+
+### Desde la terminal (en la instancia)
+
+```bash
+# Verificar que el servidor HTTP responde
+curl -s http://localhost:8080 | head -5
+
+# Verificar el endpoint de status
+curl -s http://localhost:8080/status | python3 -m json.tool
+
+# Verificar que el auth service responde
+echo -e "AUTH|operator1|op123\r\n" | nc localhost 9001
+# Respuesta esperada: OK|operator
+```
+
+### Con el simulador de sensores (desde tu maquina local)
+
+```bash
+cd clients/sensors
+python3 sensor_simulator.py --host <IP_ELASTICA> --port 9000 --count 5 --chaos
+```
+
+---
+
+## Paso 7: Configurar DNS con Route 53
+
+1. Ir a **Route 53 > Hosted Zones** y seleccionar la zona del dominio.
+2. Crear un nuevo registro:
+   - **Record name:** `iot` (resultara en `iot.tudominio.com`)
+   - **Record type:** A
+   - **Value:** la IP elastica del paso 3
+   - **TTL:** 300 (5 minutos, bajo para desarrollo)
+3. Hacer clic en **Create Records**.
+4. Esperar ~5 minutos a que propague y verificar:
+
+```bash
+# Verificar resolucion DNS
+nslookup iot.tudominio.com
+
+# Probar acceso con el dominio
+curl http://iot.tudominio.com:8080
+```
+
+5. Actualizar los clientes para usar el hostname en lugar de IP:
+
+```bash
+# Sensores
+python3 sensor_simulator.py --host iot.tudominio.com --port 9000 --count 5
+
+# Operador GUI: escribir "iot.tudominio.com" en el campo Host
+```
+
+---
+
+## Comandos utiles
+
+### Ver logs en tiempo real
+
+```bash
+# Todos los servicios
+docker compose logs -f
+
+# Solo el servidor
+docker compose logs -f server
+
+# Solo el auth service
+docker compose logs -f auth
+```
+
+### Reiniciar servicios
+
+```bash
+# Reiniciar todo
+docker compose restart
+
+# Reiniciar solo el servidor (sin afectar auth)
+docker compose restart server
+
+# Reconstruir despues de cambios en el codigo
+docker compose up -d --build
+```
+
+### Detener el sistema
+
+```bash
+# Detener sin eliminar volumenes
+docker compose down
+
+# Detener y eliminar volumenes (borra logs)
+docker compose down -v
+```
+
+### Ver estado de los contenedores
+
+```bash
+docker compose ps
+docker stats
+```
+
+### Acceder a los logs persistidos
+
+```bash
+# Los logs del servidor se guardan en un volumen Docker
+docker volume inspect iot-monitoring_server-logs
+
+# Leer el log directamente
+docker compose exec server cat /app/logs/server.log
+
+# Copiar logs al host
+docker compose cp server:/app/logs/server.log ./server.log
+```
+
+### Verificar tamano de imagenes
+
+```bash
+# Listar imagenes — la imagen del servidor debe ser < 500 MB
+docker images | grep iot
+```
+
+---
+
+## Arquitectura del despliegue
+
+```
+                Internet
+                    |
+            [Route 53 DNS]
+          iot.tudominio.com
+                    |
+            [IP Elastica]
+                    |
+            ┌───────────────────────┐
+            │    EC2 (t2.micro)     │
+            │    Ubuntu 22.04       │
+            │                       │
+            │  ┌─────────────────┐  │
+            │  │  Docker Engine  │  │
+            │  │                 │  │
+            │  │ ┌─────────────┐│  │
+            │  │ │  iot-server ││  │ :9000 IOTP
+            │  │ │  (C binary) ││  │ :8080 HTTP
+            │  │ └──────┬──────┘│  │
+            │  │        │ DNS   │  │
+            │  │ ┌──────▼──────┐│  │
+            │  │ │  iot-auth   ││  │ :9001 Auth
+            │  │ │  (Python)   ││  │
+            │  │ └─────────────┘│  │
+            │  │                 │  │
+            │  │  [iot-network]  │  │
+            │  └─────────────────┘  │
+            └───────────────────────┘
+```
+
+---
+
+## Solucion de problemas
+
+| Problema | Causa probable | Solucion |
+|----------|---------------|----------|
+| No se puede acceder al puerto 8080 | Security Group no configurado | Verificar reglas de inbound en el SG |
+| "AUTH_UNAVAILABLE" en el servidor | Auth service no levanto o nombre DNS incorrecto | `docker compose logs auth` y verificar que el nombre sea `auth` |
+| Sensores no conectan | Puerto 9000 no abierto o DNS no resuelve | Verificar SG y `nslookup <dominio>` |
+| Imagen Docker > 500 MB | Dependencias innecesarias en el stage final | Verificar que el Dockerfile use multi-stage |
+| "Permission denied" al ejecutar Docker | Usuario no en grupo docker | Ejecutar `sudo usermod -aG docker ubuntu` y reconectar |

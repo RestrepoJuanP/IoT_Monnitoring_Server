@@ -1,0 +1,62 @@
+# =============================================================================
+# Módulo 5 — Docker Compose para el sistema IoT completo
+#
+# Servicios:
+#   - server: servidor IOTP (C) + servidor HTTP embebido
+#   - auth:   servicio de autenticación (Python)
+#
+# Red interna: el servidor resuelve "auth" por nombre de servicio Docker DNS.
+# CERO IPs literales: el server usa --auth-host auth (nombre DNS de Docker).
+#
+# Uso:
+#   docker-compose up -d          # levantar en background
+#   docker-compose logs -f        # ver logs en tiempo real
+#   docker-compose down           # detener y eliminar
+# =============================================================================
+
+version: "3.8"
+
+services:
+  # --- Servidor central IOTP + HTTP (Módulo 2) ---
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: iot-server
+    ports:
+      - "9000:9000"   # Protocolo IOTP
+      - "8080:8080"   # Interfaz web HTTP
+    volumes:
+      - server-logs:/app/logs
+    depends_on:
+      auth:
+        condition: service_started
+    networks:
+      - iot-network
+    restart: unless-stopped
+    # Los argumentos del CMD en el Dockerfile ya apuntan a --auth-host auth
+    # Si se necesita sobreescribir:
+    # command: ["9000", "/app/logs/server.log", "--http-port", "8080", "--auth-host", "auth", "--auth-port", "9001"]
+
+  # --- Servicio de autenticación (Módulo 4) ---
+  auth:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: iot-auth
+    ports:
+      - "9001:9001"
+    networks:
+      - iot-network
+    restart: unless-stopped
+    command: ["--port", "9001", "--users-file", "users.json"]
+
+# Red interna para que los servicios se resuelvan por nombre DNS
+networks:
+  iot-network:
+    driver: bridge
+
+# Volumen para persistir logs fuera del contenedor
+volumes:
+  server-logs:
+    driver: local

@@ -1,0 +1,34 @@
+{
+    "tipos_sensor": {
+        "temperatura": {
+            "unidad": "°C",
+            "rango_min": 15.0,
+            "rango_max": 90.0,
+            "umbral_alerta_min": 15.0,
+            "umbral_alerta_max": 80.0,
+            "caos_min": -10.0,
+            "caos_max": 120.0
+        },
+        "vibracion": {
+            "unidad": "mm/s",
+            "rango_min": 0.0,
+            "rango_max": 50.0,
+            "umbral_alerta_min": null,
+            "umbral_alerta_max": 40.0,
+            "caos_min": 0.0,
+            "caos_max": 100.0
+        },
+        "energia": {
+            "unidad": "kW",
+            "rango_min": 0.0,
+            "rango_max": 500.0,
+            "umbral_alerta_min": null,
+            "umbral_alerta_max": 450.0,
+            "caos_min": 0.0,
+            "caos_max": 800.0
+        }
+    },
+    "credenciales": {
+        "password": "sensor123"
+    }
+}
